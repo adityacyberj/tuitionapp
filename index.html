@@ -34,7 +34,7 @@ main{flex:1;overflow-y:auto;padding:12px 16px 100px}
 .btn{font:inherit;font-weight:700;border:0;border-radius:10px;padding:12px 14px;background:var(--ink);color:var(--paper);width:100%;cursor:pointer;margin-top:8px}
 .btn.alt{background:var(--margin);color:#fff}.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
 .mini{font:inherit;font-size:13px;font-weight:700;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:8px;padding:6px 9px;cursor:pointer;text-decoration:none;display:inline-block}
-input,select{font:inherit;width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);margin-bottom:8px}
+input,select,textarea{font:inherit;width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);margin-bottom:8px}
 label{font-size:13px;color:var(--muted);display:block;margin-bottom:2px}
 h2{font-family:"Kalam",cursive,sans-serif;font-size:19px;margin:16px 0 6px}
 .pa{font-family:"Kalam",cursive,sans-serif;font-size:22px;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:var(--okbg);color:var(--ok);flex:none}
@@ -269,9 +269,66 @@ async function tstView(){
       window.open("https://wa.me/"+s.parent_whatsapp+"?text="+encodeURIComponent(msg),"_blank")}})}
 }
 
+/* ---------- CSV / paste import ---------- */
+var IMP=[];
+function importCard(){
+  return '<h2>Bachche ek saath jodo</h2><div class="card"><p class="sub">Har line mein: Naam, Class, Parent ka WhatsApp, Batch (batch likhna zaroori nahi). Excel ya Sheet se copy karke paste karo, ya CSV file chuno.</p>'+
+   '<label for="ib">Batch (jis line mein batch na ho uske liye)</label><select id="ib"><option value="">-</option>'+batches.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+'</option>'}).join("")+'</select>'+
+   '<label for="ifile">CSV file</label><input id="ifile" type="file" accept=".csv,.txt,text/csv,text/plain">'+
+   '<label for="itxt">Ya yahan paste karo</label><textarea id="itxt" rows="6" placeholder="Aarav Sharma, 10, 9876543210, Class 10 Maths"></textarea>'+
+   '<button class="btn" id="icheck">Check karo</button><div id="iprev"></div></div>'}
+function splitLine(l){
+  if(l.indexOf("\t")>=0)return l.split("\t").map(function(x){return x.trim()});
+  var out=[],cur="",q=false;
+  for(var i=0;i<l.length;i++){var ch=l[i];if(ch==='"')q=!q;else if(ch===","&&!q){out.push(cur.trim());cur=""}else cur+=ch}
+  out.push(cur.trim());return out}
+function normPhone(x){var d=String(x||"").replace(/\D/g,"");
+  if(d.length===10)return "91"+d;if(d.length===11&&d[0]==="0")return "91"+d.slice(1);if(d.length===12&&d.slice(0,2)==="91")return d;return null}
+function parseImport(text){
+  var lines=text.split(/\r?\n/).map(function(l){return l.trim()}).filter(Boolean),rows=[],seen={},dflt=$("ib").value;
+  lines.forEach(function(l,i){var c=splitLine(l);
+    if(i===0&&/^(naam|name|student)/i.test(c[0]||""))return;
+    var r={n:(c[0]||"").trim(),cl:(c[1]||"").trim(),ph:normPhone(c[2]),b:(c[3]||"").trim(),err:""};
+    if(!r.n)r.err="naam nahi";else if(!r.cl)r.err="class nahi";else if(!r.ph)r.err="phone galat";
+    else if(!r.b&&!dflt)r.err="batch nahi chuna";
+    else{var key=r.n.toLowerCase()+"|"+r.ph;
+      if(seen[key])r.err="file mein dobara";
+      else if(students.some(function(z){return z.name.toLowerCase()===r.n.toLowerCase()&&z.parent_whatsapp===r.ph}))r.err="pehle se jura hai";
+      seen[key]=1}
+    rows.push(r)});
+  return rows}
+function bindImport(){
+  $("ifile").onchange=function(){var f=this.files[0];if(!f)return;var rd=new FileReader();
+    rd.onload=function(){$("itxt").value=String(rd.result||"");toast("File padh li, ab Check karo dabao")};
+    rd.onerror=function(){toast("File padh nahi paye")};rd.readAsText(f)};
+  $("icheck").onclick=function(){
+    IMP=parseImport($("itxt").value);
+    if(!IMP.length){$("iprev").innerHTML='<p class="sub">Koi line nahi mili.</p>';return}
+    var ok=IMP.filter(function(r){return !r.err}),bad=IMP.length-ok.length;
+    var h='<p style="margin:10px 0 4px"><b style="color:var(--ok)">'+ok.length+' sahi</b>'+(bad?' · <b style="color:var(--margin)">'+bad+' galat (ye jode nahi jayenge)</b>':'')+'</p>';
+    IMP.slice(0,60).forEach(function(r){h+='<div class="sub" style="padding:2px 0;color:'+(r.err?'var(--margin)':'var(--muted)')+'">'+(r.err?'✗ ':'✓ ')+esc(r.n||"?")+' · '+esc(r.cl)+' · '+(r.ph?'+'+r.ph:'?')+(r.b?' · '+esc(r.b):'')+(r.err?' ('+r.err+')':'')+'</div>'});
+    if(IMP.length>60)h+='<div class="sub">... aur '+(IMP.length-60)+' lines</div>';
+    if(ok.length)h+='<button class="btn alt" id="idoit">Import karo ('+ok.length+')</button>';
+    $("iprev").innerHTML=h;
+    var go=$("idoit");if(go)go.onclick=async function(){
+      go.disabled=true;go.textContent="Ho raha hai...";
+      var dflt=batches.find(function(b){return b.id===$("ib").value}),valid=IMP.filter(function(r){return !r.err}),map={};
+      batches.forEach(function(b){map[b.name.toLowerCase()]=b.id});
+      var need={};valid.forEach(function(r){var nm=r.b||(dflt&&dflt.name);if(nm&&!map[nm.toLowerCase()]&&!need[nm.toLowerCase()])need[nm.toLowerCase()]={name:nm,cl:r.cl}});
+      var nk=Object.keys(need);
+      if(nk.length){var nb=await sb.from("batches").insert(nk.map(function(k){return {owner_id:uid,name:need[k].name,class_name:need[k].cl,monthly_fee:0}})).select();
+        if(nb.error){fail(nb.error);go.disabled=false;go.textContent="Dobara try karo";return}
+        nb.data.forEach(function(b){map[b.name.toLowerCase()]=b.id})}
+      var rows=valid.map(function(r){var nm=r.b||(dflt&&dflt.name);return {owner_id:uid,batch_id:map[nm.toLowerCase()],name:r.n,class_name:r.cl,parent_whatsapp:r.ph}});
+      for(var i=0;i<rows.length;i+=100){var x=await sb.from("students").insert(rows.slice(i,i+100));
+        if(x.error){fail(x.error);go.disabled=false;go.textContent="Dobara try karo";return}}
+      await loadBase();
+      toast(rows.length+" bachche jud gaye"+(nk.length?" ("+nk.length+" naya batch bana, uski fees Rs 0 hai, Batch jodo se theek karo)":""));
+      stuView()}}}
+
 /* ---------- Students ---------- */
 function stuView(){
-  var h='<h2 style="margin-top:0">Fees ka UPI ID</h2><div class="card"><label for="upi">UPI ID (parent isi par fees dega)</label><input id="upi" placeholder="naam@bank" value="'+esc(owner.upi_id)+'"><button class="btn" id="saveupi">UPI ID save karo</button></div><h2>Batch jodo</h2><div class="card"><label for="bn">Batch ka naam</label><input id="bn" placeholder="Class 10 Maths"><label for="bc">Class</label><input id="bc" placeholder="10"><label for="bf">Monthly fees (Rs)</label><input id="bf" type="number" inputmode="numeric"><button class="btn" id="addb">Batch jodo</button></div>';
+  var h='<h2 style="margin-top:0">Fees ka UPI ID</h2><div class="card"><label for="upi">UPI ID (parent isi par fees dega)</label><input id="upi" placeholder="naam@bank" value="'+esc(owner.upi_id)+'"><button class="btn" id="saveupi">UPI ID save karo</button></div>'+importCard()+'<h2>Batch jodo</h2><div class="card"><label for="bn">Batch ka naam</label><input id="bn" placeholder="Class 10 Maths"><label for="bc">Class</label><input id="bc" placeholder="10"><label for="bf">Monthly fees (Rs)</label><input id="bf" type="number" inputmode="numeric"><button class="btn" id="addb">Batch jodo</button></div>';
   h+='<h2>Student jodo</h2><div class="card"><label for="sn">Naam</label><input id="sn"><label for="sc">Class</label><input id="sc" placeholder="10"><label for="sp">Parent ka WhatsApp (10 digit)</label><input id="sp" type="tel" inputmode="numeric" maxlength="10"><label for="sb">Batch</label><select id="sb">'+
    batches.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+'</option>'}).join("")+'</select><button class="btn alt" id="adds">Student jodo</button></div>';
   h+='<h2>Students ('+students.length+')</h2>';
@@ -279,6 +336,7 @@ function stuView(){
     var link=location.origin+"/parent.html?t="+s.parent_token,msg="Namaste, "+s.name+" ki attendance, homework aur fees yahan dekhein: "+link+" - "+owner.centre_name;
     h+='<div class="card ok"><b>'+esc(s.name)+'</b><span class="sub">Class '+esc(s.class_name)+' · '+(b?esc(b.name):"batch nahi")+' · +'+esc(s.parent_whatsapp)+'</span><div style="margin-top:8px;display:flex;gap:6px"><a class="mini" target="_blank" href="https://wa.me/'+esc(s.parent_whatsapp)+'?text='+encodeURIComponent(msg)+'">Parent link bhejo</a><button class="mini" data-cp="'+esc(link)+'">Link copy</button></div></div>'});
   $("main").innerHTML=h;
+  bindImport();
   $("saveupi").onclick=async function(){var v=$("upi").value.trim();
     if(v&&!/^[\w.\-]{2,}@[\w.\-]{2,}$/.test(v)){toast("UPI ID aise likho: naam@bank");return}
     var x=await sb.from("owners").update({upi_id:v||null}).eq("id",uid);
