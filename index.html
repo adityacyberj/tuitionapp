@@ -66,14 +66,41 @@ function toast(m){var t=$("toast");t.textContent=m;t.className="on";clearTimeout
 function today(){return new Date().toLocaleDateString("en-CA")}
 function fail(e){toast(e&&e.message?e.message:"Kuch gadbad hui, dobara try karo")}
 
-/* ---------- Login ---------- */
-function loginView(msg){
-  $("root").innerHTML='<div class="login"><h1 style="font-size:28px">TUITIONAPP</h1><p class="sub">Tuition owner login</p>'+
-   '<label for="em">Email</label><input id="em" type="email" autocomplete="username"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password">'+
-   '<button class="btn alt" id="go">Login karo</button><p class="sub" id="err" style="color:var(--margin)">'+esc(msg||"")+'</p></div>';
+/* ---------- Login / Signup ---------- */
+function loginView(msg,mode){
+  mode=mode||"in";var up=mode==="up";
+  var h='<div class="login"><h1 style="font-size:28px">TUITIONAPP</h1><p class="sub">'+(up?"Naya tuition centre account":"Tuition owner login")+'</p>'+
+   '<label for="em">Email</label><input id="em" type="email" autocomplete="username">'+
+   '<label for="pw">Password'+(up?" (kam se kam 8 akshar)":"")+'</label><input id="pw" type="password" autocomplete="'+(up?"new-password":"current-password")+'">'+
+   '<button class="btn alt" id="go">'+(up?"Account banao":"Login karo")+'</button><p class="sub" id="err" style="color:var(--margin)">'+esc(msg||"")+'</p>'+
+   '<button class="btn ghost" id="sw">'+(up?"Pehle se account hai? Login karo":"Naya account banao")+'</button></div>';
+  $("root").innerHTML=h;
+  $("sw").onclick=function(){loginView("",up?"in":"up")};
   $("go").onclick=async function(){
-    var r=await sb.auth.signInWithPassword({email:$("em").value.trim(),password:$("pw").value});
-    if(r.error){$("err").textContent="Login nahi hua: "+r.error.message;return}
+    var em=$("em").value.trim(),pw=$("pw").value;
+    if(!em||!pw){$("err").textContent="Email aur password daalo";return}
+    if(up){
+      if(pw.length<8){$("err").textContent="Password kam se kam 8 akshar ka rakho";return}
+      var r=await sb.auth.signUp({email:em,password:pw});
+      if(r.error){$("err").textContent="Account nahi bana: "+r.error.message;return}
+      if(!r.data.session){loginView("Email par confirm link bheja hai. Confirm karke login karo.","in");return}
+      start();return}
+    var r2=await sb.auth.signInWithPassword({email:em,password:pw});
+    if(r2.error){$("err").textContent="Login nahi hua: "+r2.error.message;return}
+    start()}}
+
+function profileView(){
+  $("root").innerHTML='<div class="login"><h1 style="font-size:28px">Centre ki jaankari</h1><p class="sub">Bas ek baar bharni hai</p>'+
+   '<label for="pc">Tuition centre ka naam</label><input id="pc"><label for="po">Aapka naam</label><input id="po">'+
+   '<label for="pwa">Aapka WhatsApp number (10 digit)</label><input id="pwa" type="tel" inputmode="numeric" maxlength="10">'+
+   '<button class="btn alt" id="psave">Shuru karo</button><p class="sub" id="perr" style="color:var(--margin)"></p><button class="btn ghost" id="pout">Logout</button></div>';
+  $("pout").onclick=async function(){await sb.auth.signOut();loginView()};
+  $("psave").onclick=async function(){
+    var c=$("pc").value.trim(),n=$("po").value.trim(),w=$("pwa").value.replace(/\D/g,"");
+    if(!c||!n){$("perr").textContent="Centre ka naam aur aapka naam daalo";return}
+    if(w.length!==10){$("perr").textContent="WhatsApp number 10 digit ka hona chahiye";return}
+    var x=await sb.from("owners").insert({id:uid,centre_name:c,owner_name:n,whatsapp:"91"+w});
+    if(x.error){$("perr").textContent=x.error.message;return}
     start()}}
 
 /* ---------- App shell ---------- */
@@ -83,7 +110,7 @@ async function start(){
   uid=s.data.session.user.id;
   var o=await sb.from("owners").select("*").eq("id",uid).maybeSingle();
   if(o.error){loginView(o.error.message);return}
-  if(!o.data){loginView("Is login ke liye owner profile nahi bani. Pehle owners table mein is user ki row jodo.");return}
+  if(!o.data){profileView();return}
   owner=o.data;
   $("root").innerHTML='<header><div><h1>'+esc(owner.centre_name)+'</h1><div class="sub">'+esc(owner.owner_name)+'</div></div><button class="mini" id="out">Logout</button></header><main id="main"></main>'+
    '<nav role="tablist"><button class="tab" role="tab" data-t="home">Home</button><button class="tab" role="tab" data-t="fees">Fees</button><button class="tab" role="tab" data-t="att">Attendance</button><button class="tab" role="tab" data-t="hw">Homework</button><button class="tab" role="tab" data-t="tst">Tests</button><button class="tab" role="tab" data-t="enq">Enquiries</button><button class="tab" role="tab" data-t="stu">Students</button></nav>';
