@@ -40,8 +40,8 @@ h2{font-family:"Kalam",cursive,sans-serif;font-size:19px;margin:16px 0 6px}
 .pa{font-family:"Kalam",cursive,sans-serif;font-size:22px;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:var(--okbg);color:var(--ok);flex:none}
 .pa.a{background:var(--margin);color:#fff}.pa.n{background:var(--track);color:var(--muted)}
 button.row{width:100%;font:inherit;text-align:left;color:var(--ink);cursor:pointer}
-nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
-.tab{flex:1;font:inherit;font-size:13px;font-weight:700;padding:14px 0;border:0;background:transparent;color:var(--muted);cursor:pointer}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;overflow-x:auto;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tab{flex:0 0 auto;font:inherit;font-size:14px;font-weight:700;padding:14px 16px;border:0;background:transparent;color:var(--muted);cursor:pointer}
 .tab[aria-selected="true"]{color:var(--margin);box-shadow:inset 0 3px 0 var(--margin)}
 input:focus-visible,select:focus-visible,.btn:focus-visible,.tab:focus-visible,.mini:focus-visible,button.row:focus-visible{outline:3px solid var(--margin);outline-offset:2px}
 #toast{position:fixed;left:16px;right:16px;bottom:calc(70px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);padding:12px 14px;border-radius:10px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s}
@@ -86,10 +86,10 @@ async function start(){
   if(!o.data){loginView("Is login ke liye owner profile nahi bani. Pehle owners table mein is user ki row jodo.");return}
   owner=o.data;
   $("root").innerHTML='<header><div><h1>'+esc(owner.centre_name)+'</h1><div class="sub">'+esc(owner.owner_name)+'</div></div><button class="mini" id="out">Logout</button></header><main id="main"></main>'+
-   '<nav role="tablist"><button class="tab" role="tab" data-t="fees">Fees</button><button class="tab" role="tab" data-t="att">Attendance</button><button class="tab" role="tab" data-t="hw">Homework</button><button class="tab" role="tab" data-t="tst">Tests</button><button class="tab" role="tab" data-t="stu">Students</button></nav>';
+   '<nav role="tablist"><button class="tab" role="tab" data-t="home">Home</button><button class="tab" role="tab" data-t="fees">Fees</button><button class="tab" role="tab" data-t="att">Attendance</button><button class="tab" role="tab" data-t="hw">Homework</button><button class="tab" role="tab" data-t="tst">Tests</button><button class="tab" role="tab" data-t="enq">Enquiries</button><button class="tab" role="tab" data-t="stu">Students</button></nav>';
   $("out").onclick=async function(){await sb.auth.signOut();loginView()};
   [].forEach.call(document.querySelectorAll(".tab"),function(b){b.onclick=function(){show(b.dataset.t)}});
-  await loadBase();show("fees")}
+  await loadBase();show("home")}
 
 async function loadBase(){
   var b=await sb.from("batches").select("*").order("class_name"),s=await sb.from("students").select("*").eq("active",true).order("name");
@@ -99,8 +99,63 @@ async function loadBase(){
 async function show(t){tab=t;
   [].forEach.call(document.querySelectorAll(".tab"),function(b){b.setAttribute("aria-selected",b.dataset.t===t)});
   $("main").innerHTML='<p class="sub">Load ho raha hai...</p>';
-  if(t==="fees")await feesView();else if(t==="att")await attView();else if(t==="hw")await hwView();else if(t==="tst")await tstView();else stuView();
+  if(t==="home")await dashView();else if(t==="enq")await enqView();else if(t==="fees")await feesView();else if(t==="att")await attView();else if(t==="hw")await hwView();else if(t==="tst")await tstView();else stuView();
   $("main").scrollTop=0}
+
+/* ---------- Home (dashboard) ---------- */
+async function dashView(){
+  var now=new Date(),m1=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-01",td=today();
+  var f=await sb.from("fees").select("amount,status,due_date,month,students(name,parent_whatsapp)");
+  var at=await sb.from("attendance").select("student_id,status").eq("date",td);
+  var en=await sb.from("enquiries").select("status");
+  if(f.error||at.error||en.error){fail(f.error||at.error||en.error);return}
+  var got=0,pend=0,old=0,late=[];
+  (f.data||[]).forEach(function(x){var a=Number(x.amount),paid=x.status==="paid";
+    if(x.month>=m1){paid?got+=a:pend+=a}else if(!paid)old+=a;
+    if(!paid&&x.due_date<td)late.push({name:(x.students||{}).name,wa:(x.students||{}).parent_whatsapp,amt:a,days:Math.floor((now-new Date(x.due_date+"T00:00:00"))/864e5)})});
+  late.sort(function(a,b){return b.days-a.days});
+  var pct=got+pend?Math.round(got/(got+pend)*100):0;
+  var P=0,absn=[];(at.data||[]).forEach(function(r){if(r.status==="P")P++;else{var s=students.find(function(z){return z.id===r.student_id});absn.push(s?s.name:"?")}});
+  var unmarked=Math.max(0,students.length-(at.data||[]).length);
+  var ec={new:0,contacted:0,joined:0,dropped:0};(en.data||[]).forEach(function(e){ec[e.status]=(ec[e.status]||0)+1});
+  var h='<div class="card ok"><div class="row"><span><b>Is mahine ki fees</b></span><span class="sub">'+pct+'% aayi</span></div>'+
+   '<div class="sum" style="margin:8px 0 0"><div><b style="color:var(--ok)">'+rs(got)+'</b><span class="sub">Aayi</span></div><div><b style="color:var(--margin)">'+rs(pend)+'</b><span class="sub">Pending</span></div></div>'+
+   '<div class="bar" style="height:12px;border-radius:6px;background:var(--badbg);overflow:hidden;margin-top:8px" role="img" aria-label="'+pct+' percent fees aayi"><i style="display:block;height:100%;width:'+pct+'%;background:var(--ok)"></i></div>'+
+   (old>0?'<div class="sub" style="margin-top:6px">Pichhle mahino ki baaki fees: '+rs(old)+'</div>':'')+'</div>';
+  h+='<div class="sum"><div><b>'+students.length+'</b><span class="sub">Kul students</span></div><div><b>'+batches.length+'</b><span class="sub">Batch</span></div></div>';
+  h+='<h2>Late fees ('+late.length+')</h2>';
+  if(!late.length)h+='<div class="card ok"><span class="sub">Koi late fees nahi. Badhiya!</span></div>';
+  late.forEach(function(x){var msg="Namaste, "+x.name+" ki fees "+rs(x.amt)+" baaki hai ("+x.days+" din late). Kripya jald jama karein. - "+owner.centre_name;
+    h+='<div class="card"><div class="row"><div style="min-width:0"><b>'+esc(x.name)+'</b><span class="sub">'+rs(x.amt)+'</span></div><span class="tag">'+x.days+' din late</span></div><div style="margin-top:8px"><a class="mini" target="_blank" href="https://wa.me/'+esc(x.wa)+'?text='+encodeURIComponent(msg)+'">WhatsApp reminder</a></div></div>'});
+  h+='<h2>Aaj ki attendance</h2><div class="card ok"><div class="row"><span>Present '+P+'</span><span style="color:var(--margin)">Absent '+absn.length+'</span></div><div class="sub">'+(absn.length?'Absent: '+esc(absn.join(", ")):'Koi absent nahi')+(unmarked?' · '+unmarked+' ki attendance baaki':'')+'</div></div>';
+  h+='<h2>Refer a friend</h2><div class="card"><div class="row"><span>Kul enquiries '+((en.data||[]).length)+'</span><span class="sub">Join kiya: '+ec.joined+'</span></div><div class="sub">Naye: '+ec.new+' · Baat hui: '+ec.contacted+' · Nahi aaye: '+ec.dropped+'</div></div>';
+  $("main").innerHTML=h}
+
+/* ---------- Enquiries (Refer a friend) ---------- */
+var ST=["new","contacted","joined","dropped"],LB={new:"Naya",contacted:"Baat hui",joined:"Join kiya",dropped:"Nahi aaya"};
+async function enqView(){
+  var r=await sb.from("enquiries").select("*").order("created_at",{ascending:false}).limit(100);
+  if(r.error){fail(r.error);return}
+  var E=r.data||[];
+  var h='<h2 style="margin-top:0">Naya enquiry</h2><div class="card"><label for="en">Naam</label><input id="en"><label for="ep">Phone (10 digit)</label><input id="ep" type="tel" inputmode="numeric" maxlength="10"><label for="ec">Class</label><input id="ec" placeholder="10"><label for="eb">Kisne refer kiya</label><select id="eb"><option value="">Koi nahi</option>'+
+   students.map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>'}).join("")+'</select><button class="btn alt" id="adde">Enquiry jodo</button></div><h2>Enquiries ('+E.length+')</h2>';
+  if(!E.length)h+='<p class="sub">Abhi koi enquiry nahi.</p>';
+  var tally={};
+  E.forEach(function(e){var by=students.find(function(z){return z.id===e.referred_by_student});if(by)tally[by.name]=(tally[by.name]||0)+1;
+    var msg="Namaste "+e.name+", "+(by?by.name+" ne aapko hamare tuition centre ke baare mein bataya. ":"")+"Demo class ke liye aap kab aa sakte hain? - "+owner.centre_name;
+    h+='<div class="card'+(e.status==="joined"?' ok':'')+'"><div class="row"><div style="min-width:0"><b>'+esc(e.name)+'</b><span class="sub">'+(e.class_name?'Class '+esc(e.class_name)+' · ':'')+(by?'Refer: '+esc(by.name):'Seedha enquiry')+'</span></div><button class="mini" data-st="'+e.id+'" data-v="'+e.status+'" aria-label="Status badlo, abhi '+LB[e.status]+'">'+LB[e.status]+'</button></div>'+
+     '<div style="margin-top:8px;display:flex;gap:6px"><a class="mini" href="tel:+91'+esc(e.phone)+'">Call</a><a class="mini" target="_blank" href="https://wa.me/91'+esc(e.phone)+'?text='+encodeURIComponent(msg)+'">WhatsApp</a></div></div>'});
+  var top=Object.keys(tally).sort(function(a,b){return tally[b]-tally[a]}).slice(0,3);
+  if(top.length)h+='<h2>Sabse zyada refer karne wale</h2><div class="card ok">'+top.map(function(k){return '<div class="row" style="padding:3px 0"><span>'+esc(k)+'</span><span>'+tally[k]+'</span></div>'}).join("")+'</div>';
+  $("main").innerHTML=h;
+  $("adde").onclick=async function(){var n=$("en").value.trim(),p=$("ep").value.trim();
+    if(!n){toast("Naam daalo");return}
+    if(!/^\d{10}$/.test(p)){toast("Phone 10 digit ka hona chahiye");return}
+    var x=await sb.from("enquiries").insert({owner_id:uid,name:n,phone:p,class_name:$("ec").value.trim()||null,referred_by_student:$("eb").value||null,status:"new"});
+    x.error?fail(x.error):(toast("Enquiry jud gayi"),enqView())};
+  [].forEach.call(document.querySelectorAll("[data-st]"),function(b){b.onclick=async function(){
+    var nx=ST[(ST.indexOf(b.dataset.v)+1)%ST.length],x=await sb.from("enquiries").update({status:nx}).eq("id",b.dataset.st);
+    x.error?fail(x.error):(toast(LB[nx]),enqView())}})}
 
 /* ---------- Fees ---------- */
 async function feesView(){
