@@ -41,7 +41,7 @@ h2{font-family:"Kalam",cursive,sans-serif;font-size:19px;margin:16px 0 6px}
 .pa.a{background:var(--margin);color:#fff}.pa.n{background:var(--track);color:var(--muted)}
 button.row{width:100%;font:inherit;text-align:left;color:var(--ink);cursor:pointer}
 nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
-.tab{flex:1;font:inherit;font-weight:700;padding:14px 0;border:0;background:transparent;color:var(--muted);cursor:pointer}
+.tab{flex:1;font:inherit;font-size:13px;font-weight:700;padding:14px 0;border:0;background:transparent;color:var(--muted);cursor:pointer}
 .tab[aria-selected="true"]{color:var(--margin);box-shadow:inset 0 3px 0 var(--margin)}
 input:focus-visible,select:focus-visible,.btn:focus-visible,.tab:focus-visible,.mini:focus-visible,button.row:focus-visible{outline:3px solid var(--margin);outline-offset:2px}
 #toast{position:fixed;left:16px;right:16px;bottom:calc(70px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);padding:12px 14px;border-radius:10px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s}
@@ -86,7 +86,7 @@ async function start(){
   if(!o.data){loginView("Is login ke liye owner profile nahi bani. Pehle owners table mein is user ki row jodo.");return}
   owner=o.data;
   $("root").innerHTML='<header><div><h1>'+esc(owner.centre_name)+'</h1><div class="sub">'+esc(owner.owner_name)+'</div></div><button class="mini" id="out">Logout</button></header><main id="main"></main>'+
-   '<nav role="tablist"><button class="tab" role="tab" data-t="fees">Fees</button><button class="tab" role="tab" data-t="att">Attendance</button><button class="tab" role="tab" data-t="hw">Homework</button><button class="tab" role="tab" data-t="stu">Students</button></nav>';
+   '<nav role="tablist"><button class="tab" role="tab" data-t="fees">Fees</button><button class="tab" role="tab" data-t="att">Attendance</button><button class="tab" role="tab" data-t="hw">Homework</button><button class="tab" role="tab" data-t="tst">Tests</button><button class="tab" role="tab" data-t="stu">Students</button></nav>';
   $("out").onclick=async function(){await sb.auth.signOut();loginView()};
   [].forEach.call(document.querySelectorAll(".tab"),function(b){b.onclick=function(){show(b.dataset.t)}});
   await loadBase();show("fees")}
@@ -99,7 +99,7 @@ async function loadBase(){
 async function show(t){tab=t;
   [].forEach.call(document.querySelectorAll(".tab"),function(b){b.setAttribute("aria-selected",b.dataset.t===t)});
   $("main").innerHTML='<p class="sub">Load ho raha hai...</p>';
-  if(t==="fees")await feesView();else if(t==="att")await attView();else if(t==="hw")await hwView();else stuView();
+  if(t==="fees")await feesView();else if(t==="att")await attView();else if(t==="hw")await hwView();else if(t==="tst")await tstView();else stuView();
   $("main").scrollTop=0}
 
 /* ---------- Fees ---------- */
@@ -165,6 +165,54 @@ async function hwView(){
     x.error?fail(x.error):(toast("Homework jud gaya"),hwView())};
   [].forEach.call(document.querySelectorAll("[data-d]"),function(b){b.onclick=async function(){
     var x=await sb.from("homework").delete().eq("id",b.dataset.d);x.error?fail(x.error):hwView()}})}
+
+/* ---------- Tests ---------- */
+var testSel="";
+function rankOf(vals){return vals.map(function(v){return v==null?null:1+vals.filter(function(o){return o!=null&&o>v}).length})}
+async function tstView(){
+  if(!batches.length){$("main").innerHTML='<p class="sub">Pehle Students tab mein batch jodo.</p>';return}
+  var r=await sb.from("tests").select("*").eq("batch_id",batchSel).order("test_date",{ascending:false}).limit(10);
+  if(r.error){fail(r.error);return}
+  var tests=r.data||[];
+  if(!tests.find(function(t){return t.id===testSel}))testSel=tests.length?tests[0].id:"";
+  var cur=tests.find(function(t){return t.id===testSel}),list=students.filter(function(s){return s.batch_id===batchSel}),marks={};
+  if(cur){var m=await sb.from("test_marks").select("student_id,marks").eq("test_id",cur.id);
+    if(m.error){fail(m.error);return}(m.data||[]).forEach(function(x){marks[x.student_id]=Number(x.marks)})}
+  var h='<label for="tb">Batch</label><select id="tb">'+batches.map(function(b){return '<option value="'+b.id+'"'+(b.id===batchSel?' selected':'')+'>'+esc(b.name)+'</option>'}).join("")+'</select>'+
+   '<h2 style="margin-top:0">Naya test</h2><div class="card"><label for="tt">Test ka naam</label><input id="tt" placeholder="Weekly Test 4"><label for="tm">Total marks</label><input id="tm" type="number" inputmode="numeric" value="50"><label for="td">Tareekh</label><input id="td" type="date" value="'+today()+'"><button class="btn" id="addt">Test banao</button></div>';
+  if(cur){
+    h+='<h2>Marks daalo</h2><label for="ts">Test chuno</label><select id="ts">'+tests.map(function(t){return '<option value="'+t.id+'"'+(t.id===testSel?' selected':'')+'>'+esc(t.title)+' ('+esc(t.test_date)+')</option>'}).join("")+'</select>'+
+     '<div class="sum"><div><b id="tavg">-</b><span class="sub">Class average</span></div><div><b id="ttop">-</b><span class="sub">Sabse zyada (max '+cur.max_marks+')</span></div></div>';
+    if(!list.length)h+='<p class="sub">Is batch mein koi student nahi.</p>';
+    list.forEach(function(s){h+='<div class="card ok"><div class="row"><div style="min-width:0"><b>'+esc(s.name)+'</b><span class="sub" data-rk="'+s.id+'">Rank: -</span></div><input class="mk" type="number" inputmode="decimal" min="0" max="'+cur.max_marks+'" data-s="'+s.id+'" value="'+(marks[s.id]==null?"":marks[s.id])+'" style="width:90px;margin:0" aria-label="'+esc(s.name)+' ke marks"></div><button class="mini" data-rep="'+s.id+'" style="margin-top:8px">Parent ko report bhejo</button></div>'});
+    if(list.length)h+='<button class="btn alt" id="savem">Marks save karo</button>';
+  }else h+='<p class="sub">Is batch ka abhi koi test nahi. Upar se naya test banao.</p>';
+  $("main").innerHTML=h;
+  function vals(){var o={};[].forEach.call(document.querySelectorAll(".mk"),function(e){o[e.dataset.s]=e.value===""?null:Math.min(+cur.max_marks,Math.max(0,+e.value))});return o}
+  function upd(){if(!cur)return;var o=vals(),ids=list.map(function(s){return s.id}),v=ids.map(function(i){return o[i]}),rk=rankOf(v),have=v.filter(function(x){return x!=null});
+    ids.forEach(function(id,i){var e=document.querySelector('[data-rk="'+id+'"]');if(e)e.textContent="Rank: "+(rk[i]==null?"-":"#"+rk[i]+" / "+have.length)});
+    $("tavg").textContent=have.length?(have.reduce(function(a,b){return a+b},0)/have.length).toFixed(1):"-";
+    $("ttop").textContent=have.length?Math.max.apply(null,have):"-"}
+  $("tb").onchange=function(){batchSel=this.value;testSel="";tstView()};
+  $("addt").onclick=async function(){var t=$("tt").value.trim(),mx=+$("tm").value;
+    if(!t||!(mx>0)){toast("Test ka naam aur total marks bharo");return}
+    var x=await sb.from("tests").insert({owner_id:uid,batch_id:batchSel,title:t,test_date:$("td").value||today(),max_marks:mx}).select().single();
+    if(x.error)return fail(x.error);testSel=x.data.id;toast("Test ban gaya");tstView()};
+  if(cur){
+    $("ts").onchange=function(){testSel=this.value;tstView()};
+    [].forEach.call(document.querySelectorAll(".mk"),function(e){e.oninput=upd});upd();
+    $("savem").onclick=async function(){var o=vals(),rows=[];
+      list.forEach(function(s){if(o[s.id]!=null)rows.push({test_id:cur.id,student_id:s.id,marks:o[s.id]})});
+      if(!rows.length){toast("Kam se kam ek bachche ke marks daalo");return}
+      var x=await sb.from("test_marks").upsert(rows,{onConflict:"test_id,student_id"});
+      x.error?fail(x.error):(toast("Marks save ho gaye"),tstView())};
+    [].forEach.call(document.querySelectorAll("[data-rep]"),function(b){b.onclick=function(){
+      var o=vals(),id=b.dataset.rep,s=students.find(function(z){return z.id===id}),m=o[id];
+      if(m==null){toast("Pehle "+s.name+" ke marks daalo");return}
+      var ids=list.map(function(z){return z.id}),v=ids.map(function(i){return o[i]}),rk=rankOf(v)[ids.indexOf(id)],n=v.filter(function(x){return x!=null}).length,pc=Math.round(m/cur.max_marks*100);
+      var msg="Test report - "+s.name+"\n"+cur.title+": "+m+"/"+cur.max_marks+" ("+pc+"%)\nBatch rank: "+rk+" / "+n+"\nPoora report: "+location.origin+"/parent.html?t="+s.parent_token+"\n- "+owner.centre_name;
+      window.open("https://wa.me/"+s.parent_whatsapp+"?text="+encodeURIComponent(msg),"_blank")}})}
+}
 
 /* ---------- Students ---------- */
 function stuView(){
