@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Parent View</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hind:wght@400;600;700&family=Kalam:wght@700&display=swap">
+<style>
+:root{
+  --paper:#F2F5FB; --card:#FFFFFF; --ink:#1B2A5C; --muted:#5B6690; --line:#D5DCEE;
+  --margin:#D64045; --ok:#1F8A57; --okbg:#DDF2E7; --badbg:#FBE1E2; --track:#E4E9F6;
+}
+@media (prefers-color-scheme: dark){
+  :root{--paper:#0F1530;--card:#18204A;--ink:#E8ECFF;--muted:#9AA5D6;--line:#2B3566;--margin:#F0686C;--ok:#52C98C;--okbg:#14382A;--badbg:#45202A;--track:#2B3566;color-scheme:dark}
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--paper);color:var(--ink);font-family:"Hind",system-ui,sans-serif;font-size:16px;line-height:1.4;
+  background-image:repeating-linear-gradient(transparent 0 31px,var(--line) 31px 32px);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+header{padding:14px 16px 10px;border-bottom:2px solid var(--margin);background:var(--paper)}
+h1{font-family:"Kalam",cursive,sans-serif;font-size:24px;margin:0;line-height:1.1}
+.sub{color:var(--muted);font-size:13px}
+main{flex:1;overflow-y:auto;padding:12px 16px 100px}
+.card{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--margin);border-radius:10px;padding:12px;margin-bottom:10px}
+.card.ok{border-left-color:var(--ok)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:600}
+.big{font-size:28px;font-weight:700}
+.bar{height:12px;border-radius:6px;background:var(--track);overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%;background:var(--ok)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:8px;text-align:center}
+.cal span{font-size:12px;color:var(--muted)}
+.cal b{display:grid;place-items:center;height:34px;border-radius:8px;font-size:14px;background:var(--track);color:var(--muted);font-weight:600}
+.cal b.p{background:var(--okbg);color:var(--ok)}.cal b.a{background:var(--margin);color:#fff}
+.tag{font-size:12px;font-weight:700;border-radius:20px;padding:2px 9px;background:var(--badbg);color:var(--margin);white-space:nowrap}
+.tag.ok{background:var(--okbg);color:var(--ok)}
+.btn{font:inherit;font-weight:700;border:0;border-radius:10px;padding:13px 14px;background:var(--ink);color:var(--paper);width:100%;cursor:pointer;margin-top:8px;display:block;text-align:center;text-decoration:none}
+.btn.alt{background:var(--margin);color:#fff}.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn:focus-visible,.tab:focus-visible{outline:3px solid var(--margin);outline-offset:2px}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav[hidden]{display:none}
+.tab{flex:1;font:inherit;font-weight:700;padding:14px 0;border:0;background:transparent;color:var(--muted);cursor:pointer}
+.tab[aria-selected="true"]{color:var(--margin);box-shadow:inset 0 3px 0 var(--margin)}
+</style>
+</head>
+<body>
+<header><h1 id="nm">Parent View</h1><div class="sub" id="ct"></div></header>
+<main id="main"><p class="sub">Load ho raha hai...</p></main>
+<nav role="tablist" id="nav" hidden>
+  <button class="tab" role="tab" data-t="att" aria-selected="true">Attendance</button>
+  <button class="tab" role="tab" data-t="hw" aria-selected="false">Homework</button>
+  <button class="tab" role="tab" data-t="fee" aria-selected="false">Fees</button>
+</nav>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.js"></script>
+<script>
+var sb=supabase.createClient("https://zebkmbkdcsvjteiijgsq.supabase.co","sb_publishable_7CF5WngGFMErT8AB6P7M6w_ox5GTBr_");
+var $=function(id){return document.getElementById(id)};
+var D=null;
+function esc(x){return String(x==null?"":x).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function rs(n){return "₹"+Number(n).toLocaleString("en-IN")}
+function dstr(d){var m=d.getMonth()+1,x=d.getDate();return d.getFullYear()+"-"+(m<10?"0":"")+m+"-"+(x<10?"0":"")+x}
+
+function attView(){
+  var map={},p=0,a=0;
+  D.attendance.forEach(function(r){map[r.date]=r.status;r.status==="P"?p++:a++});
+  var tot=p+a,pct=tot?Math.round(p/tot*100):0,now=new Date(),y=now.getFullYear(),mo=now.getMonth(),days=new Date(y,mo+1,0).getDate(),lead=(new Date(y,mo,1).getDay()+6)%7;
+  var h='<div class="card ok"><div class="row"><span>'+now.toLocaleDateString("en-IN",{month:"long",year:"numeric"})+'</span><span class="big">'+(tot?pct+"%":"-")+'</span></div>'+
+   '<div class="bar" role="img" aria-label="'+pct+' percent attendance"><i style="width:'+pct+'%"></i></div><div class="sub">Pichhle 30 din: '+p+' din present, '+a+' din absent</div><div class="cal">'+
+   ["Som","Mang","Budh","Guru","Shuk","Shani","Ravi"].map(function(d){return "<span>"+d+"</span>"}).join("");
+  for(var i=0;i<lead;i++)h+="<span></span>";
+  for(var d=1;d<=days;d++){var k=dstr(new Date(y,mo,d)),s=map[k];h+='<b class="'+(s==="P"?"p":s==="A"?"a":"")+'">'+(s||d)+'</b>'}
+  return h+'</div></div><div class="sub">P = present, A = absent</div>'}
+
+function hwView(){
+  if(!D.homework.length)return '<p class="sub">Abhi koi homework nahi hai.</p>';
+  return D.homework.map(function(x){return '<div class="card"><b>'+esc(x.title)+'</b><div class="sub">'+(x.due?'Jama karne ki tareekh: '+esc(x.due):'')+(x.details?'<br>'+esc(x.details):'')+'</div></div>'}).join("")}
+
+function feeView(){
+  var pend=D.fees.filter(function(f){return f.status!=="paid"}),h="";
+  if(!D.fees.length)return '<p class="sub">Abhi koi fees record nahi hai.</p>';
+  pend.forEach(function(f){
+    var d=Math.floor((new Date()-new Date(f.due+"T00:00:00"))/864e5),mon=f.month.slice(0,7);
+    h+='<div class="card"><div class="row"><span>'+esc(mon)+'</span><span class="tag">'+(d>0?d+' din late':'Baaki')+'</span></div><div class="big">'+rs(f.amount)+'</div><div class="sub">Due date: '+esc(f.due)+'</div>';
+    if(D.upi){
+      var u="upi://pay?pa="+encodeURIComponent(D.upi)+"&pn="+encodeURIComponent(D.centre)+"&am="+f.amount+"&cu=INR&tn="+encodeURIComponent("Fees "+mon+" "+D.student.name);
+      h+='<a class="btn alt" href="'+u+'">UPI se pay karo</a>';
+    }else h+='<p class="sub">UPI ID abhi set nahi hai. Fees ke liye tuition se pooch lein.</p>';
+    if(D.whatsapp)h+='<a class="btn ghost" target="_blank" href="https://wa.me/'+esc(D.whatsapp)+'?text='+encodeURIComponent("Namaste, "+D.student.name+" ki "+mon+" ki fees "+rs(f.amount)+" bhej di hai. Payment ka screenshot bhej raha/rahi hoon.")+'">Payment ka screenshot bhejo</a>';
+    h+='</div>'});
+  var paid=D.fees.filter(function(f){return f.status==="paid"});
+  if(paid.length){h+='<div class="sub" style="margin:12px 0 6px">Jama fees</div>'+paid.map(function(f){return '<div class="card ok"><div class="row"><span>'+esc(f.month.slice(0,7))+'</span><span>'+rs(f.amount)+' <span class="tag ok">Jama</span></span></div></div>'}).join("")}
+  if(!pend.length)h='<div class="card ok"><b>Sab fees jama hain. Dhanyavaad!</b></div>'+h;
+  return h}
+
+function show(t){
+  [].forEach.call(document.querySelectorAll(".tab"),function(b){b.setAttribute("aria-selected",b.dataset.t===t)});
+  $("main").innerHTML=t==="att"?attView():t==="hw"?hwView():feeView();$("main").scrollTop=0}
+
+async function init(){
+  var t=new URLSearchParams(location.search).get("t");
+  if(!t){$("main").innerHTML='<p class="sub">Ye link adhoora hai. Tuition se sahi link maangiye.</p>';return}
+  var r=await sb.rpc("parent_view",{p_token:t});
+  if(r.error||!r.data){$("main").innerHTML='<p class="sub">Ye link sahi nahi hai ya purana ho gaya hai. Tuition se naya link maangiye.</p>';return}
+  D=r.data;$("nm").textContent=D.student.name;$("ct").textContent="Class "+D.student.class+" · "+D.centre;
+  $("nav").hidden=false;
+  [].forEach.call(document.querySelectorAll(".tab"),function(b){b.onclick=function(){show(b.dataset.t)}});
+  show("att")}
+init();
+</script>
+</body>
+</html>
