@@ -353,6 +353,48 @@ function bindImport(){
       toast(rows.length+" bachche jud gaye"+(nk.length?" ("+nk.length+" naya batch bana, uski fees Rs 0 hai, Batch jodo se theek karo)":""));
       stuView()}}}
 
+/* ---------- Data backup (CSV) ---------- */
+var BK={
+  students:{t:"Students",q:function(){return sb.from("students").select("name,class_name,parent_whatsapp,joined_on,active,batches(name)").order("id")},
+    c:["Naam","Class","Parent WhatsApp","Batch","Joined","Active"],r:function(x){return [x.name,x.class_name,x.parent_whatsapp,(x.batches||{}).name,x.joined_on,x.active?"haan":"nahi"]}},
+  batches:{t:"Batches",q:function(){return sb.from("batches").select("name,class_name,monthly_fee,timing").order("id")},
+    c:["Batch","Class","Monthly fees","Timing"],r:function(x){return [x.name,x.class_name,x.monthly_fee,x.timing]}},
+  fees:{t:"Fees",q:function(){return sb.from("fees").select("month,amount,due_date,status,paid_on,students(name,class_name)").order("id")},
+    c:["Student","Class","Mahina","Amount","Due date","Status","Jama hui"],r:function(x){var s=x.students||{};return [s.name,s.class_name,x.month,x.amount,x.due_date,x.status,x.paid_on]}},
+  attendance:{t:"Attendance",q:function(){return sb.from("attendance").select("date,status,students(name,class_name)").order("id")},
+    c:["Student","Class","Tareekh","P/A"],r:function(x){var s=x.students||{};return [s.name,s.class_name,x.date,x.status]}},
+  test_marks:{t:"Test marks",q:function(){return sb.from("test_marks").select("marks,tests(title,test_date,max_marks),students(name)").order("id")},
+    c:["Student","Test","Tareekh","Marks","Total marks"],r:function(x){var t=x.tests||{};return [(x.students||{}).name,t.title,t.test_date,x.marks,t.max_marks]}},
+  homework:{t:"Homework",q:function(){return sb.from("homework").select("title,details,due_on,created_at,batches(name)").order("id")},
+    c:["Batch","Homework","Details","Due","Banaya"],r:function(x){return [(x.batches||{}).name,x.title,x.details,x.due_on,x.created_at]}},
+  enquiries:{t:"Enquiries",q:function(){return sb.from("enquiries").select("name,phone,class_name,status,created_at,referred_by_student").order("id")},
+    c:["Naam","Phone","Class","Status","Refer kisne kiya","Tareekh"],r:function(x){var b=students.find(function(z){return z.id===x.referred_by_student});return [x.name,x.phone,x.class_name,x.status,b?b.name:"",x.created_at]}}
+};
+function csvCell(v){v=v==null?"":String(v);return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+async function makeCsv(k){
+  var d=BK[k],rows=[],from=0;
+  while(true){var r=await d.q().range(from,from+999);
+    if(r.error){fail(r.error);return null}
+    rows=rows.concat(r.data||[]);if((r.data||[]).length<1000)break;from+=1000}
+  var text=[d.c.map(csvCell).join(",")].concat(rows.map(function(x){return d.r(x).map(csvCell).join(",")})).join("\r\n");
+  return {text:text,n:rows.length,name:"tuitionapp-"+k+"-"+today()+".csv"}}
+function backupCard(){
+  return '<h2>Data backup</h2><div class="card"><p class="sub">Apna data CSV file mein save karo (Excel ya Sheets mein khulti hai). Hafte mein ek baar zaroor lo.</p>'+
+   '<label for="bkt">Kaunsa data</label><select id="bkt">'+Object.keys(BK).map(function(k){return '<option value="'+k+'">'+BK[k].t+'</option>'}).join("")+'</select>'+
+   '<button class="btn" id="bkdl">Download karo (CSV)</button><button class="btn ghost" id="bksh">Share karo (WhatsApp / Drive)</button><button class="btn ghost" id="bkcp">Text copy karo</button></div>'}
+function bindBackup(){
+  async function get(){toast("Data aa raha hai...");var c=await makeCsv($("bkt").value);if(c&&!c.n)toast("Is table mein abhi koi data nahi");return c&&c.n?c:null}
+  $("bkdl").onclick=async function(){var c=await get();if(!c)return;
+    var b=new Blob(["\ufeff"+c.text],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");
+    a.href=URL.createObjectURL(b);a.download=c.name;document.body.appendChild(a);a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500);toast(c.n+" rows ki file ban gayi. Na mile to Share ya Copy karo")};
+  $("bksh").onclick=async function(){var c=await get();if(!c)return;
+    var f=new File(["\ufeff"+c.text],c.name,{type:"text/csv"});
+    if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:c.name})}catch(e){}}
+    else toast("Is phone mein Share nahi chalta. Download ya Copy karo")};
+  $("bkcp").onclick=async function(){var c=await get();if(!c)return;
+    try{await navigator.clipboard.writeText(c.text);toast(c.n+" rows copy ho gayi. Notes ya Sheets mein paste karo")}catch(e){toast("Copy nahi hua")}}}
+
 /* ---------- Account (password badlo) ---------- */
 function accountCard(){
   return '<h2>Account</h2><div class="card"><label for="np">Naya password (kam se kam 8 akshar)</label><input id="np" type="password" autocomplete="new-password"><button class="btn" id="chpw">Password badlo</button><p class="sub" style="margin-top:8px">Password bhool gaye? Apne tuition app wale se sampark karein.</p></div>'}
@@ -380,9 +422,9 @@ function stuView(){
   students.forEach(function(s){var b=batches.find(function(x){return x.id===s.batch_id});
     var link=location.origin+"/parent.html?t="+s.parent_token,msg="Namaste, "+s.name+" ki attendance, homework aur fees yahan dekhein: "+link+" - "+owner.centre_name;
     h+='<div class="card ok"><b>'+esc(s.name)+'</b><span class="sub">Class '+esc(s.class_name)+' · '+(b?esc(b.name):"batch nahi")+' · +'+esc(s.parent_whatsapp)+'</span><div style="margin-top:8px;display:flex;gap:6px"><a class="mini" target="_blank" href="https://wa.me/'+esc(s.parent_whatsapp)+'?text='+encodeURIComponent(msg)+'">Parent link bhejo</a><button class="mini" data-cp="'+esc(link)+'">Link copy</button><button class="mini" data-nl="'+s.id+'">Naya link</button></div></div>'});
-  h+=accountCard();
+  h+=backupCard()+accountCard();
   $("main").innerHTML=h;
-  bindImport();bindAccount();bindLinks();
+  bindImport();bindAccount();bindLinks();bindBackup();
   $("saveupi").onclick=async function(){var v=$("upi").value.trim();
     if(v&&!/^[\w.\-]{2,}@[\w.\-]{2,}$/.test(v)){toast("UPI ID aise likho: naam@bank");return}
     var x=await sb.from("owners").update({upi_id:v||null}).eq("id",uid);
