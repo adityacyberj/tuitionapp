@@ -363,6 +363,14 @@ function bindAccount(){
     if(x.error){fail(x.error);return}
     $("np").value="";toast("Password badal gaya")}}
 
+function bindLinks(){
+  [].forEach.call(document.querySelectorAll("[data-nl]"),function(b){b.onclick=async function(){
+    var s=students.find(function(z){return z.id===b.dataset.nl});
+    if(!s||!confirm(s.name+" ka purana parent link band ho jayega. Naya link banayein?"))return;
+    var x=await sb.from("students").update({parent_token:crypto.randomUUID()}).eq("id",s.id);
+    if(x.error)return fail(x.error);
+    await loadBase();toast("Naya link ban gaya. Ab naya link bhejo");stuView()}})}
+
 /* ---------- Students ---------- */
 function stuView(){
   var h='<h2 style="margin-top:0">Fees ka UPI ID</h2><div class="card"><label for="upi">UPI ID (parent isi par fees dega)</label><input id="upi" placeholder="naam@bank" value="'+esc(owner.upi_id)+'"><button class="btn" id="saveupi">UPI ID save karo</button></div>'+importCard()+'<h2>Batch jodo</h2><div class="card"><label for="bn">Batch ka naam</label><input id="bn" placeholder="Class 10 Maths"><label for="bc">Class</label><input id="bc" placeholder="10"><label for="bf">Monthly fees (Rs)</label><input id="bf" type="number" inputmode="numeric"><button class="btn" id="addb">Batch jodo</button></div>';
@@ -371,10 +379,10 @@ function stuView(){
   h+='<h2>Students ('+students.length+')</h2>';
   students.forEach(function(s){var b=batches.find(function(x){return x.id===s.batch_id});
     var link=location.origin+"/parent.html?t="+s.parent_token,msg="Namaste, "+s.name+" ki attendance, homework aur fees yahan dekhein: "+link+" - "+owner.centre_name;
-    h+='<div class="card ok"><b>'+esc(s.name)+'</b><span class="sub">Class '+esc(s.class_name)+' · '+(b?esc(b.name):"batch nahi")+' · +'+esc(s.parent_whatsapp)+'</span><div style="margin-top:8px;display:flex;gap:6px"><a class="mini" target="_blank" href="https://wa.me/'+esc(s.parent_whatsapp)+'?text='+encodeURIComponent(msg)+'">Parent link bhejo</a><button class="mini" data-cp="'+esc(link)+'">Link copy</button></div></div>'});
+    h+='<div class="card ok"><b>'+esc(s.name)+'</b><span class="sub">Class '+esc(s.class_name)+' · '+(b?esc(b.name):"batch nahi")+' · +'+esc(s.parent_whatsapp)+'</span><div style="margin-top:8px;display:flex;gap:6px"><a class="mini" target="_blank" href="https://wa.me/'+esc(s.parent_whatsapp)+'?text='+encodeURIComponent(msg)+'">Parent link bhejo</a><button class="mini" data-cp="'+esc(link)+'">Link copy</button><button class="mini" data-nl="'+s.id+'">Naya link</button></div></div>'});
   h+=accountCard();
   $("main").innerHTML=h;
-  bindImport();bindAccount();
+  bindImport();bindAccount();bindLinks();
   $("saveupi").onclick=async function(){var v=$("upi").value.trim();
     if(v&&!/^[\w.\-]{2,}@[\w.\-]{2,}$/.test(v)){toast("UPI ID aise likho: naam@bank");return}
     var x=await sb.from("owners").update({upi_id:v||null}).eq("id",uid);
